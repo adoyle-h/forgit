@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # MIT (c) Wenxuan Zhang
+# vim: set ts=4 sw=4
 
 # This file is meant to be executed directly. If it's available on the PATH,
 # it can also be used as a subcommand of git, which then forwards all arguments
@@ -55,10 +56,10 @@ _forgit_previous_commit() {
 hash emojify &>/dev/null && _forgit_emojify='|emojify'
 
 # extract the first git sha occurring in the input and strip trailing newline
-_forgit_extract_sha="grep -Eo '[a-f0-9]+' | head -1 | tr -d '[:space:]'"
+export _forgit_extract_sha="grep -Eo '[a-f0-9]{6,}' | head -1 | tr -d '[:space:]'"
 
 _forgit_pager=${FORGIT_PAGER:-$(git config core.pager || echo 'cat')}
-_forgit_show_pager=${FORGIT_SHOW_PAGER:-$(git config pager.show || echo "$_forgit_pager")}
+export _forgit_show_pager=${FORGIT_SHOW_PAGER:-$(git config pager.show || echo "$_forgit_pager")}
 _forgit_diff_pager=${FORGIT_DIFF_PAGER:-$(git config pager.diff || echo "$_forgit_pager")}
 _forgit_ignore_pager=${FORGIT_IGNORE_PAGER:-$(hash bat &>/dev/null && echo 'bat -l gitignore --color=always' || echo 'cat')}
 _forgit_blame_pager=${FORGIT_BLAME_PAGER:-$(git config pager.blame || echo "$_forgit_pager")}
@@ -70,19 +71,31 @@ _forgit_fullscreen_context=${FORGIT_FULLSCREEN_CONTEXT:-10}
 _forgit_preview_context=${FORGIT_PREVIEW_CONTEXT:-3}
 _forgit_is_file_tracked="(git ls-files {} --error-unmatch) &> /dev/null"
 
+
+_forgit_log_preview() {
+    local sha
+
+    sha=$(eval "echo '$*' | $_forgit_extract_sha")
+    if [[ -z $sha ]]; then exit 0; fi
+
+    git show --color=always --pretty=fuller --stat --show-signature "$sha" | $_forgit_show_pager
+}
+export -f _forgit_log_preview
+
 # git commit viewer
 _forgit_log() {
     _forgit_inside_work_tree || return 1
     local opts graph files log_format preview_cmd enter_cmd
     files=$(sed -nE 's/.* -- (.*)/\1/p' <<< "$*") # extract files parameters for `git show` command
-    preview_cmd="echo {} | $_forgit_extract_sha | xargs -I% git show --color=always -U$_forgit_preview_context % -- $files | $_forgit_show_pager"
-    enter_cmd="echo {} | $_forgit_extract_sha | xargs -I% ${FORGIT} diff %^! $files"
+    preview_cmd='_forgit_log_preview {}'
+    enter_cmd="echo {} | $_forgit_extract_sha | xargs -I% ${FORGIT} show % $files"
     opts="
         $FORGIT_FZF_DEFAULT_OPTS
         +s +m --tiebreak=index
         --bind=\"enter:execute($enter_cmd)\"
         --bind=\"ctrl-y:execute-silent(echo {} | $_forgit_extract_sha | ${FORGIT_COPY_CMD:-pbcopy})\"
         --preview=\"$preview_cmd\"
+        --preview-window='down,50%'
         $FORGIT_LOG_FZF_OPTS
     "
     graph=--graph
@@ -96,16 +109,58 @@ _forgit_log() {
     return $fzf_exit_code
 }
 
+# git show viewer
+_forgit_show() {
+    _forgit_inside_work_tree || return 1
+
+    local files opts commit repo get_files preview_cmd enter_cmd
+
+    commit=$(git rev-parse --short=8 "${1:-HEAD}")
+    files=("${@:2}")
+    repo="$(git rev-parse --show-toplevel)"
+    get_files="cd '$repo' && echo {} | sed 's/.*] *//' | sed 's/  ->  / /'"
+    # Git stashes are named "stash@{x}", which contains the fzf placeholder "{x}".
+    # In order to support passing stashes as arguments to _forgit_show, we have to
+    # prevent fzf from interpreting this substring by escaping the opening bracket.
+    # The string is evaluated a few subsequent times, so we need multiple escapes.
+    preview_cmd="$get_files | xargs -I% git diff --color=always -U$_forgit_preview_context ${commit}^ $commit -- % | $_forgit_show_pager"
+    enter_cmd="$get_files | xargs -I% git --no-pager show --color=always -U$_forgit_fullscreen_context $commit -- %"
+
+    header=$(git --no-pager show --color=always --pretty=fuller --no-patch "$commit")
+    header=$(printf '%s\n-----\n' "$header")
+
+    opts="
+    $FORGIT_FZF_DEFAULT_OPTS
+    +m -0 --bind=\"enter:execute(clear;$enter_cmd | $_forgit_enter_pager)\"
+    --preview=\"$preview_cmd\"
+    ${FORGIT_SHOW_FZF_OPTS:-}
+    --prompt=\"$commit > \"
+    --header=\"$header\"
+    "
+
+    eval "git diff --name-status ${commit}^ $commit -- ${files[*]} | sed -E 's/^([[:alnum:]]+)[[:space:]]+(.*)$/[\1]	\2/'" |
+        sed 's/	/  ->  /2' | expand -t 8 |
+        FZF_DEFAULT_OPTS="$opts" fzf
+
+    fzf_exit_code=$?
+    # exit successfully on 130 (ctrl-c/esc)
+    [[ $fzf_exit_code == 130 ]] && return 0
+
+    return $fzf_exit_code
+}
+
 # git diff viewer
 _forgit_diff() {
     _forgit_inside_work_tree || return 1
-    local files opts commits repo get_files preview_cmd enter_cmd
+    local files opts commits repo get_files preview_cmd enter_cmd header
     [[ $# -ne 0 ]] && {
         if git rev-parse "$1" -- &>/dev/null ; then
             if [[ $# -gt 1 ]] && git rev-parse "$2" -- &>/dev/null; then
                 commits="$1 $2" && files=("${@:3}")
             else
                 commits="$1" && files=("${@:2}")
+                header=$(git --no-pager show --color=always --pretty=fuller --no-patch "$commits")
+                header=$(printf '%s\n-----\n' "$header")
             fi
         else
             files=("$@")
@@ -126,6 +181,7 @@ _forgit_diff() {
         --preview=\"$preview_cmd\"
         $FORGIT_DIFF_FZF_OPTS
         --prompt=\"$commits > \"
+        --header=\"$header\"
     "
     eval "git diff --name-status $commits -- ${files[*]} | sed -E 's/^([[:alnum:]]+)[[:space:]]+(.*)$/[\1]	\2/'" |
         sed 's/	/  ->  /2' | expand -t 8 |
@@ -270,7 +326,7 @@ _forgit_cherry_pick() {
     [[ -z $1 ]] && echo "Please specify target branch" && return 1
     target="$1"
 
-    # in this function, we do something interesting to maintain proper ordering as it's assumed 
+    # in this function, we do something interesting to maintain proper ordering as it's assumed
     # you generally want to cherry pick oldest->newest when you multiselect
     # The instances of "cut", "nl" and "sort" all serve this purpose
     # Please see https://github.com/wfxr/forgit/issues/253 for more details
@@ -507,7 +563,7 @@ _forgit_revert_commit() {
         $FORGIT_REVERT_COMMIT_OPTS
     "
 
-    # in this function, we do something interesting to maintain proper ordering as it's assumed 
+    # in this function, we do something interesting to maintain proper ordering as it's assumed
     # you generally want to revert newest->oldest when you multiselect
     # The instances of "cut", "nl" and "sort" all serve this purpose
     # Please see https://github.com/wfxr/forgit/issues/253 for more details
@@ -516,10 +572,10 @@ _forgit_revert_commit() {
     preview="echo {} | cut -f2- | $_forgit_extract_sha | xargs -I% git show --color=always % -- $files | $_forgit_show_pager"
 
     # shellcheck disable=2207
-    IFS=$'\n' commits=($(eval "$cmd" | 
+    IFS=$'\n' commits=($(eval "$cmd" |
         nl |
-        FZF_DEFAULT_OPTS="$opts" fzf --preview="$preview" -m | 
-        sort --numeric-sort --key=1 | 
+        FZF_DEFAULT_OPTS="$opts" fzf --preview="$preview" -m |
+        sort --numeric-sort --key=1 |
         cut -f2- |
         sed 's/^[^a-f^0-9]*\([a-f0-9]*\).*/\1/'))
 
@@ -617,6 +673,7 @@ valid_commands=(
     "rebase"
     "reset_head"
     "revert_commit"
+    "show"
     "stash_show"
     "stash_push"
 )
