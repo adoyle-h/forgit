@@ -86,6 +86,21 @@ export -f _forgit_log_preview
 _forgit_log() {
     _forgit_inside_work_tree || return 1
     local opts graph files log_format preview_cmd enter_cmd
+    local -a git_opts=()
+
+    [[ $# -ne 0 ]] && {
+        local opt
+        for opt in "$@"; do
+            if [[ $opt == -- ]]; then
+                break
+            elif [[ $opt =~ ^- ]]; then
+                git_opts+=("$opt")
+            fi
+        done
+
+        shift "${#git_opts[@]}"
+    }
+
     files=$(sed -nE 's/.* -- (.*)/\1/p' <<< "$*") # extract files parameters for `git show` command
     preview_cmd='_forgit_log_preview {}'
     enter_cmd="echo {} | $_forgit_extract_sha | xargs -I% ${FORGIT} show % $files"
@@ -101,7 +116,7 @@ _forgit_log() {
     graph=--graph
     [[ $FORGIT_LOG_GRAPH_ENABLE == false ]] && graph=
     log_format=${FORGIT_GLO_FORMAT:-$_forgit_log_format}
-    eval "git log $graph --color=always --format='$log_format' $* $_forgit_emojify" |
+    eval "git log $graph --color=always --format='$log_format' ${git_opts[*]} $* $_forgit_emojify" |
         FZF_DEFAULT_OPTS="$opts" fzf
     fzf_exit_code=$?
     # exit successfully on 130 (ctrl-c/esc)
@@ -153,7 +168,20 @@ _forgit_show() {
 _forgit_diff() {
     _forgit_inside_work_tree || return 1
     local files opts commits repo get_files preview_cmd enter_cmd header
+    local -a git_opts=()
+
     [[ $# -ne 0 ]] && {
+        local opt
+        for opt in "$@"; do
+            if [[ $opt == -- ]]; then
+                break
+            elif [[ $opt =~ ^- ]]; then
+                git_opts+=("$opt")
+            fi
+        done
+
+        shift "${#git_opts[@]}"
+
         if git rev-parse "$1" -- &>/dev/null ; then
             if [[ $# -gt 1 ]] && git rev-parse "$2" -- &>/dev/null; then
                 commits="$1 $2" && files=("${@:3}")
@@ -173,8 +201,8 @@ _forgit_diff() {
     # prevent fzf from interpreting this substring by escaping the opening bracket.
     # The string is evaluated a few subsequent times, so we need multiple escapes.
     escaped_commits=${commits//\{/\\\\\{}
-    preview_cmd="$get_files | xargs -I% git diff --color=always -U$_forgit_preview_context $escaped_commits -- % | $_forgit_diff_pager"
-    enter_cmd="$get_files | xargs -I% git diff --color=always -U$_forgit_fullscreen_context $escaped_commits -- % | $_forgit_diff_pager"
+    preview_cmd="$get_files | xargs -I% git diff ${git_opts[*]} --color=always -U$_forgit_preview_context $escaped_commits -- % | $_forgit_diff_pager"
+    enter_cmd="$get_files | xargs -I% git diff ${git_opts[*]} --color=always -U$_forgit_fullscreen_context $escaped_commits -- % | $_forgit_diff_pager"
     opts="
         $FORGIT_FZF_DEFAULT_OPTS
         +m -0 --bind=\"enter:execute($enter_cmd | $_forgit_enter_pager)\"
@@ -183,7 +211,7 @@ _forgit_diff() {
         --prompt=\"$commits > \"
         --header=\"$header\"
     "
-    eval "git diff --name-status $commits -- ${files[*]} | sed -E 's/^([[:alnum:]]+)[[:space:]]+(.*)$/[\1]	\2/'" |
+    eval "git diff ${git_opts[*]} --name-status $commits -- ${files[*]} | sed -E 's/^([[:alnum:]]+)[[:space:]]+(.*)$/[\1]	\2/'" |
         sed 's/	/  ->  /2' | expand -t 8 |
         FZF_DEFAULT_OPTS="$opts" fzf
     fzf_exit_code=$?
