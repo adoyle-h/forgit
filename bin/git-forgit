@@ -82,6 +82,16 @@ _forgit_log_preview() {
 }
 export -f _forgit_log_preview
 
+_forgit_checkout_commit_preview() {
+    local sha
+
+    sha=$(eval "echo '$*' | $_forgit_extract_sha")
+    if [[ -z $sha ]]; then exit 0; fi
+
+    git show --color=always --pretty=medium --stat "$sha" | $_forgit_show_pager
+}
+export -f _forgit_checkout_commit_preview
+
 # git commit viewer
 _forgit_log() {
     _forgit_inside_work_tree || return 1
@@ -545,18 +555,18 @@ _forgit_checkout_tag() {
 _forgit_checkout_commit() {
     _forgit_inside_work_tree || return 1
     [[ $# -ne 0 ]] && { git checkout "$@"; return $?; }
-    local cmd opts graph
-    cmd="echo {} | $_forgit_extract_sha |xargs -I% git show --color=always % | $_forgit_show_pager"
+    local opts graph
     opts="
         $FORGIT_FZF_DEFAULT_OPTS
         +s +m --tiebreak=index
         --bind=\"ctrl-y:execute-silent(echo {} | $_forgit_extract_sha | ${FORGIT_COPY_CMD:-pbcopy})\"
-        --preview=\"$cmd\"
+        --preview=\"_forgit_checkout_commit_preview {}\"
+        --preview-window='down,40%'
         $FORGIT_COMMIT_FZF_OPTS
     "
     graph=--graph
     [[ $FORGIT_LOG_GRAPH_ENABLE == false ]] && graph=
-    eval "git log $graph --color=always --format='$_forgit_log_format' $_forgit_emojify" |
+    eval "git log $graph --all --color=always --format='$_forgit_log_format' $_forgit_emojify" |
         FZF_DEFAULT_OPTS="$opts" fzf | eval "$_forgit_extract_sha" | xargs -I% git checkout % --
 }
 
