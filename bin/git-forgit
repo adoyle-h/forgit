@@ -612,6 +612,24 @@ _forgit_reset_commit() {
         FZF_DEFAULT_OPTS="$opts" fzf | eval "$_forgit_extract_sha" | xargs -I% git reset --hard % --
 }
 
+# git reset-reflog selector
+_forgit_reset_reflog() {
+    _forgit_inside_work_tree || return 1
+    local opts graph
+    opts="
+        $FORGIT_FZF_DEFAULT_OPTS
+        +s +m --tiebreak=index
+        --bind=\"ctrl-y:execute-silent(echo {} | $_forgit_extract_sha | ${FORGIT_COPY_CMD:-pbcopy})\"
+        --preview=\"_forgit_commit_preview {}\"
+        --preview-window='down,50%'
+        $FORGIT_RESET_REFLOG_FZF_OPTS
+    "
+    graph=--graph
+    [[ $FORGIT_LOG_GRAPH_ENABLE == false ]] && graph=
+    eval "git reflog --color=always --decorate $1" |
+        FZF_DEFAULT_OPTS="$opts" fzf | eval "$_forgit_extract_sha" | xargs -I% git reset --hard % --
+}
+
 _forgit_branch_delete() {
     _forgit_inside_work_tree || return 1
     local preview opts cmd branches
@@ -754,6 +772,7 @@ valid_commands=(
     "rebase"
     "reset_head"
     "reset_commit"
+    "reset_reflog"
     "revert_commit"
     "show"
     "stash_show"
