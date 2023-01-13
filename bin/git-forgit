@@ -593,6 +593,25 @@ _forgit_checkout_reflog() {
         FZF_DEFAULT_OPTS="$opts" fzf | eval "$_forgit_extract_sha" | xargs -I% git checkout % --
 }
 
+# git reset-commit selector
+_forgit_reset_commit() {
+    _forgit_inside_work_tree || return 1
+    [[ $# -ne 0 ]] && { git checkout "$@"; return $?; }
+    local opts graph
+    opts="
+        $FORGIT_FZF_DEFAULT_OPTS
+        +s +m --tiebreak=index
+        --bind=\"ctrl-y:execute-silent(echo {} | $_forgit_extract_sha | ${FORGIT_COPY_CMD:-pbcopy})\"
+        --preview=\"_forgit_commit_preview {}\"
+        --preview-window='down,40%'
+        $FORGIT_RESET_COMMIT_FZF_OPTS
+    "
+    graph=--graph
+    [[ $FORGIT_LOG_GRAPH_ENABLE == false ]] && graph=
+    eval "git log $graph --all --color=always --format='$_forgit_log_format' $_forgit_emojify" |
+        FZF_DEFAULT_OPTS="$opts" fzf | eval "$_forgit_extract_sha" | xargs -I% git reset --hard % --
+}
+
 _forgit_branch_delete() {
     _forgit_inside_work_tree || return 1
     local preview opts cmd branches
@@ -734,6 +753,7 @@ valid_commands=(
     "log"
     "rebase"
     "reset_head"
+    "reset_commit"
     "revert_commit"
     "show"
     "stash_show"
