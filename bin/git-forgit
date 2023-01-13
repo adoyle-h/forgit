@@ -753,6 +753,25 @@ _forgit_ignore_clean() {
     [[ -d "$FORGIT_GI_REPO_LOCAL" ]] && rm -rf "$FORGIT_GI_REPO_LOCAL"
 }
 
+# git merge selector
+_forgit_merge() {
+    _forgit_inside_work_tree || return 1
+    [[ $# -ne 0 ]] && { git checkout "$@"; return $?; }
+    local opts graph
+    opts="
+        $FORGIT_FZF_DEFAULT_OPTS
+        +s +m --tiebreak=index
+        --bind=\"ctrl-y:execute-silent(echo {} | $_forgit_extract_sha | ${FORGIT_COPY_CMD:-pbcopy})\"
+        --preview=\"_forgit_commit_preview {}\"
+        --preview-window='down,40%'
+        $FORGIT_MERGE_FZF_OPTS
+    "
+    graph=--graph
+    [[ $FORGIT_LOG_GRAPH_ENABLE == false ]] && graph=
+    eval "git log $graph --all --color=always --format='$_forgit_log_format' $_forgit_emojify" |
+        FZF_DEFAULT_OPTS="$opts" fzf | eval "$_forgit_extract_sha" | xargs -I% git merge % --
+}
+
 valid_commands=(
     "add"
     "blame"
@@ -769,6 +788,7 @@ valid_commands=(
     "fixup"
     "ignore"
     "log"
+    "merge"
     "rebase"
     "reset_head"
     "reset_commit"
