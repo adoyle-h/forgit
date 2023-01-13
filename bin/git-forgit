@@ -92,6 +92,11 @@ _forgit_checkout_commit_preview() {
 }
 export -f _forgit_checkout_commit_preview
 
+_forgit_commit_preview() {
+    _forgit_checkout_commit_preview "$@"
+}
+export -f _forgit_commit_preview
+
 # git commit viewer
 _forgit_log() {
     _forgit_inside_work_tree || return 1
@@ -570,6 +575,24 @@ _forgit_checkout_commit() {
         FZF_DEFAULT_OPTS="$opts" fzf | eval "$_forgit_extract_sha" | xargs -I% git checkout % --
 }
 
+# git checkout-reflog selector
+_forgit_checkout_reflog() {
+    _forgit_inside_work_tree || return 1
+    local opts graph
+    opts="
+        $FORGIT_FZF_DEFAULT_OPTS
+        +s +m --tiebreak=index
+        --bind=\"ctrl-y:execute-silent(echo {} | $_forgit_extract_sha | ${FORGIT_COPY_CMD:-pbcopy})\"
+        --preview=\"_forgit_commit_preview {}\"
+        --preview-window='down,50%'
+        $FORGIT_CHECKOUT_REFLOG_FZF_OPTS
+    "
+    graph=--graph
+    [[ $FORGIT_LOG_GRAPH_ENABLE == false ]] && graph=
+    eval "git reflog --color=always --decorate $1" |
+        FZF_DEFAULT_OPTS="$opts" fzf | eval "$_forgit_extract_sha" | xargs -I% git checkout % --
+}
+
 _forgit_branch_delete() {
     _forgit_inside_work_tree || return 1
     local preview opts cmd branches
@@ -701,6 +724,7 @@ valid_commands=(
     "checkout_commit"
     "checkout_file"
     "checkout_tag"
+    "checkout_reflog"
     "cherry_pick"
     "cherry_pick_from_branch"
     "clean"
