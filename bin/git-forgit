@@ -469,7 +469,8 @@ _forgit_fixup() {
         $FORGIT_FZF_DEFAULT_OPTS
         +s +m --tiebreak=index
         --bind=\"ctrl-y:execute-silent(echo {} | $_forgit_extract_sha | ${FORGIT_COPY_CMD:-pbcopy})\"
-        --preview=\"$preview\"
+        --preview=\"_forgit_commit_preview {}\"
+        --preview-window='down,50%,hidden'
         $FORGIT_FIXUP_FZF_OPTS
     "
     target_commit=$(eval "$cmd" | FZF_DEFAULT_OPTS="$opts" fzf | eval "$_forgit_extract_sha")
