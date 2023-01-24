@@ -438,14 +438,14 @@ _forgit_rebase() {
     local cmd preview opts graph files target_commit prev_commit
     graph=--graph
     [[ $FORGIT_LOG_GRAPH_ENABLE == false ]] && graph=
-    cmd="git log $graph --color=always --format='$_forgit_log_format' $* $_forgit_emojify"
+    cmd="git log --all $graph --color=always --format='$_forgit_log_format' $* $_forgit_emojify"
     files=$(sed -nE 's/.* -- (.*)/\1/p' <<< "$*") # extract files parameters for `git show` command
-    preview="echo {} | $_forgit_extract_sha | xargs -I% git show --color=always % -- $files | $_forgit_show_pager"
     opts="
         $FORGIT_FZF_DEFAULT_OPTS
         +s +m --tiebreak=index
         --bind=\"ctrl-y:execute-silent(echo {} | $_forgit_extract_sha | ${FORGIT_COPY_CMD:-pbcopy})\"
-        --preview=\"$preview\"
+        --preview=\"_forgit_commit_preview {}\"
+        --preview-window='down,50%,hidden'
         $FORGIT_REBASE_FZF_OPTS
     "
     target_commit=$(eval "$cmd" | FZF_DEFAULT_OPTS="$opts" fzf | eval "$_forgit_extract_sha")
