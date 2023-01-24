@@ -765,7 +765,7 @@ _forgit_merge() {
         +s +m --tiebreak=index
         --bind=\"ctrl-y:execute-silent(echo {} | $_forgit_extract_sha | ${FORGIT_COPY_CMD:-pbcopy})\"
         --preview=\"_forgit_commit_preview {}\"
-        --preview-window='down,40%'
+        --preview-window='down,40%,hidden'
         $FORGIT_MERGE_FZF_OPTS
     "
     graph=--graph
