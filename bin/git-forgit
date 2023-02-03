@@ -359,41 +359,34 @@ _forgit_clean() {
 }
 
 _forgit_cherry_pick() {
-    local base target preview opts fzf_selection fzf_exitval
+    _forgit_inside_work_tree || return 1
+    local opts graph log_format preview_cmd enter_cmd
+    local -a git_opts=()
 
-    base=$(git branch --show-current)
-    [[ -z "$base" ]] && echo "Current commit is not on a branch." && return 1
+    [[ $# -ne 0 ]] && { git cherry-pick "$@"; return $?; }
 
-    [[ -z $1 ]] && echo "Please specify target branch" && return 1
-    target="$1"
-
-    # in this function, we do something interesting to maintain proper ordering as it's assumed
-    # you generally want to cherry pick oldest->newest when you multiselect
-    # The instances of "cut", "nl" and "sort" all serve this purpose
-    # Please see https://github.com/wfxr/forgit/issues/253 for more details
-
-    preview="echo {} | cut -f2- | $_forgit_extract_sha | xargs -I% git show --color=always % | $_forgit_show_pager"
+    preview_cmd='_forgit_log_preview {}'
+    enter_cmd="echo {} | $_forgit_extract_sha | xargs -I% git cherry-pick %"
     opts="
         $FORGIT_FZF_DEFAULT_OPTS
-        --preview=\"$preview\"
-        --multi --ansi --with-nth 2.. -0 --tiebreak=index
-        $FORGIT_CHERRY_PICK_FZF_OPTS
+        +s -m --tiebreak=index
+        --bind=\"ctrl-y:execute-silent(echo {} | $_forgit_extract_sha | ${FORGIT_COPY_CMD:-pbcopy})\"
+        --preview=\"$preview_cmd\"
+        --preview-window='down,50%'
+        $FORGIT_LOG_FZF_OPTS
     "
-    fzf_selection=$(git log --right-only --color=always --cherry-pick --oneline "$base"..."$target" | nl |
-        FZF_DEFAULT_OPTS="$opts" fzf | sort --numeric-sort --key=1 | cut -f 2- | cut -c 1-8)
-    fzf_exitval=$?
-    [[ $fzf_exitval != 0 ]] && return $fzf_exitval
-    [[ -z "$fzf_selection" ]] && return $fzf_exitval
+    graph=--graph
+    [[ $FORGIT_LOG_GRAPH_ENABLE == false ]] && graph=
 
-    commits=()
-    while IFS="" read -r line
-    do
-        commits+=("$line")
-    done < <(echo "$fzf_selection" | _forgit_reverse_lines | cut -d' ' -f2)
+    local line
+    while read -r line; do
+        eval "echo '$line' | $_forgit_extract_sha" | xargs -I% git cherry-pick %
+    done < <(eval "git log --all $graph --color=always --format='$_forgit_log_format' ${git_opts[*]} $* $_forgit_emojify" | FZF_DEFAULT_OPTS="$opts" fzf)
 
-    [ ${#commits[@]} -eq 0 ] && return 1
-
-    git cherry-pick "${commits[@]}"
+    fzf_exit_code=$?
+    # exit successfully on 130 (ctrl-c/esc)
+    [[ $fzf_exit_code == 130 ]] && return 0
+    return $fzf_exit_code
 }
 
 _forgit_cherry_pick_from_branch() {
