@@ -474,6 +474,31 @@ _forgit_fixup() {
 
 }
 
+_forgit_reword() {
+    _forgit_inside_work_tree || return 1
+    local cmd preview opts graph files target_commit prev_commit
+    graph=--graph
+    [[ $FORGIT_LOG_GRAPH_ENABLE == false ]] && graph=
+    cmd="git log $graph --color=always --format='$_forgit_log_format' $* $_forgit_emojify"
+    files=$(sed -nE 's/.* -- (.*)/\1/p' <<< "$*")
+    preview="echo {} | $_forgit_extract_sha | xargs -I% git show --color=always % -- $files | $_forgit_show_pager"
+    opts="
+        $FORGIT_FZF_DEFAULT_OPTS
+        +s +m --tiebreak=index
+        --bind=\"ctrl-y:execute-silent(echo {} | $_forgit_extract_sha | ${FORGIT_COPY_CMD:-pbcopy})\"
+        --preview=\"_forgit_commit_preview {}\"
+        --preview-window='down,50%,hidden'
+        $FORGIT_FIXUP_FZF_OPTS
+    "
+    target_commit=$(eval "$cmd" | FZF_DEFAULT_OPTS="$opts" fzf | eval "$_forgit_extract_sha")
+    if [[ -n "$target_commit" ]] && git commit --allow-empty --reedit-message "$target_commit" ; then
+        prev_commit=$(_forgit_previous_commit "$target_commit")
+        # rebase will fail if there are unstaged changes so --autostash is needed to temporarily stash them
+        # GIT_SEQUENCE_EDITOR=: is needed to skip the editor
+        GIT_SEQUENCE_EDITOR=: git rebase --autostash -i --autosquash "$prev_commit"
+    fi
+}
+
 # git checkout-file selector
 _forgit_checkout_file() {
     _forgit_inside_work_tree || return 1
@@ -783,6 +808,7 @@ valid_commands=(
     "log"
     "merge"
     "rebase"
+    "reword"
     "reset_head"
     "reset_commit"
     "reset_reflog"
