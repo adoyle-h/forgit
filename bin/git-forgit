@@ -817,7 +817,7 @@ _forgit_checkout_tag() {
 }
 
 _forgit_checkout_commit_preview() {
-    echo "$1" | _forgit_extract_sha | xargs -I% git show --color=always % | _forgit_pager show
+    echo "$1" | _forgit_extract_sha | xargs -I% git show --color=always --pretty=fuller --stat % | _forgit_pager show
 }
 
 _forgit_git_checkout_commit() {
