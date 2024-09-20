@@ -1040,6 +1040,15 @@ _forgit_ignore_clean() {
     [[ -d "$FORGIT_GI_REPO_LOCAL" ]] && rm -rf "$FORGIT_GI_REPO_LOCAL"
 }
 
+# git show viewer
+_forgit_show() {
+    header=$(git --no-pager show --color=always --pretty=fuller --no-patch --quiet "${@}")
+    header=$(printf '%s\n-----\n' "$header")
+
+    FORGIT_DIFF_FZF_OPTS="--header='$header'"
+    _forgit_diff HEAD^ "HEAD"
+}
+
 public_commands=(
     "add"
     "blame"
@@ -1059,6 +1068,7 @@ public_commands=(
     "rebase"
     "reset_head"
     "revert_commit"
+    "show"
     "stash_show"
     "stash_push"
 )
